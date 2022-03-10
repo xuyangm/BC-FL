@@ -1,0 +1,25 @@
+// $ python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. job_api.proto
+
+syntax = "proto3";
+
+service JobService {
+  rpc Connect (ConnectRequest) returns (ConnectResponse) {}
+  rpc Train (TrainRequest) returns (TrainResponse) {}
+
+}
+
+message ConnectRequest {
+  uint32 group_id = 1;
+}
+
+message ConnectResponse {
+  bytes global_model = 1;
+}
+
+message TrainRequest {
+  bytes updates = 1;
+}
+
+message TrainResponse {
+  uint32 round = 1;
+}
