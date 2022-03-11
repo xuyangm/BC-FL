@@ -7,6 +7,7 @@ import torch
 from utils.divide_data import *
 from selector import Selector
 import time
+import gc
 
 
 class Group(object):
@@ -23,6 +24,7 @@ class Group(object):
         self.global_model = None
         self.local_models = []
         self.device = torch.device("cuda")
+        torch.backends.cudnn.benchmark = True
         self.lr = lr
         self.momentum = momentum
         self.weight_decay = weight_decay
@@ -77,10 +79,10 @@ class Group(object):
                     print("error type: {}".format(ex))
                     break
             self.local_models[idx] = self.local_models[idx].to('cpu')
+            torch.cuda.empty_cache()
 
         # average models
         scale = 1.0/len(self.local_models)
-        print("scale={}".format(scale))
         global_state = self.local_models[0].state_dict()
 
         for var in global_state:
@@ -92,9 +94,7 @@ class Group(object):
                 global_state[var] = global_state[var] + local_state[var]*scale
 
         self.global_model.load_state_dict(global_state)
-
-        self.test()
-
+        # self.test()
         self.global_model = self.global_model.cpu()
 
         # create request
@@ -151,7 +151,11 @@ def run():
         group.connect(server_addr)
         group.train()
         group.close()
+
+        # release memory when a round ends
         del group
+        gc.collect()
+        torch.cuda.empty_cache()
         print("Round {} finished, using {} min".format(r+1, (time.time()-t)/60))
 
 

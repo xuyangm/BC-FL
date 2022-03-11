@@ -2,6 +2,7 @@ import grpc
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+import gc
 
 import job_api_pb2_grpc
 import job_api_pb2
@@ -37,6 +38,11 @@ class EdgeServer(job_api_pb2_grpc.JobServiceServicer):
         return response
 
     def Train(self, request, context):
+        # clean memory before training every time
+        del self.global_model
+        gc.collect()
+        torch.cuda.empty_cache()
+
         self.global_model = pickle.loads(request.updates)
 
         # test
