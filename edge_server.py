@@ -1,6 +1,5 @@
 import grpc
 import torch
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import gc
 
@@ -10,7 +9,7 @@ import pickle
 from concurrent import futures
 import time
 
-from utils.divide_data import get_dataset
+from utils.divide_data import get_dataset, select_dataset
 from utils.model_creator import init_model
 
 
@@ -26,9 +25,9 @@ class EdgeServer(job_api_pb2_grpc.JobServiceServicer):
         self.global_model = init_model()
         self.device = torch.device("cuda")
 
-        test_dataset = get_dataset(0, 'cifar', True)
-        self.test_loader = DataLoader(dataset=test_dataset, batch_size=batch_sz)
-        self.test_data_size = len(test_dataset)
+        test_dataset = get_dataset(0, 'femnist', True)
+        self.test_loader = select_dataset(1, test_dataset, batch_sz, 0)
+        self.test_data_size = len(test_dataset.partitions[0])
 
     def Connect(self, request, context):
         print("------------Round {}------------".format(request.group_id))

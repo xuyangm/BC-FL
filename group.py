@@ -24,15 +24,15 @@ class Group(object):
         self.global_model = None
         self.local_models = []
         self.device = torch.device("cuda")
-        torch.backends.cudnn.benchmark = True
+        # torch.backends.cudnn.benchmark = True // if enabling it, the GPU memory usage increases a lot!
         self.lr = lr
         self.momentum = momentum
         self.weight_decay = weight_decay
         self.local_steps = local_steps
 
-        test_dataset = get_dataset(0, 'cifar', True)
-        self.test_loader = DataLoader(dataset=test_dataset, batch_size=batch_sz)
-        self.test_data_size = len(test_dataset)
+        # test_dataset = get_dataset(0, 'cifar', True)
+        # self.test_loader = DataLoader(dataset=test_dataset, batch_size=batch_sz)
+        # self.test_data_size = len(test_dataset)
 
     def connect(self, addr):
         # connect to a server
@@ -56,6 +56,7 @@ class Group(object):
         # train
         for idx, client in enumerate(self.client_ids):
             print("The {}-th client is training. Client ID: {}.".format(idx+1, client))
+
             self.local_models[idx] = self.local_models[idx].to(device=self.device)
             self.local_models[idx].train()
             optimizer = torch.optim.SGD(self.local_models[idx].parameters(),
@@ -65,6 +66,7 @@ class Group(object):
             step = 0
             while step < self.local_steps:
                 step += 1
+                print("epoch {}".format(step))
                 try:
                     for (X, y) in self.train_loaders[idx]:
                         X = X.to(device=self.device)
@@ -76,7 +78,7 @@ class Group(object):
                         optimizer.step()
 
                 except Exception as ex:
-                    print("error type: {}".format(ex))
+                    print(ex)
                     break
             self.local_models[idx] = self.local_models[idx].to('cpu')
             torch.cuda.empty_cache()
@@ -131,23 +133,23 @@ class Group(object):
 
 def run():
     batch_sz = 50
-    candidates = [_ for _ in range(1, 101)]
-    rounds = 200
+    candidates = [_ for _ in range(1, 2801)]
+    rounds = 100
     selector = Selector(candidates)
-    train_dataset = get_dataset(len(candidates), 'cifar', False)
+    train_dataset = get_dataset(len(candidates), 'femnist', False)
     for r in range(rounds):
         t = time.time()
         # select participants
-        participants = selector.select_participants(sample_size=10)
+        participants = selector.select_participants(sample_size=100)
 
-        # prepare datasets
+        # prepare dataloader
         train_loaders = []
         for participant in participants:
             train_loaders.append(select_dataset(participant, train_dataset, batch_sz, 0))
 
         server_addr = 'localhost:12345'
 
-        group = Group(r+1, participants, train_loaders)
+        group = Group(r+1, participants, train_loaders, lr=4e-2, local_steps=20)
         group.connect(server_addr)
         group.train()
         group.close()

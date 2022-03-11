@@ -4,6 +4,7 @@ from random import Random
 from torch.utils.data import DataLoader
 import numpy as np
 import csv
+import os
 
 
 class Partition(object):
@@ -31,6 +32,9 @@ class DataPartitioner(object):
         self.data = data
         np.random.seed(seed)
         self.data_len = len(self.data)
+
+    def __len__(self):
+        return self.data_len
 
     def trace_partition(self, data_map_file):
         """Read data mapping from data_map_file. Format: <client_id, sample_name, sample_category, category_id>"""
@@ -99,13 +103,6 @@ def select_dataset(rank, partition, batch_size, num_loaders):
     return DataLoader(partition, batch_size=batch_size, shuffle=True, pin_memory=True, timeout=time_out, num_workers=num_loaders, drop_last=dropLast)
 
 
-def divide_data(num_of_clients):
-    train_dataset = CustomizedData("./femnist", "train.csv")
-    training_sets = DataPartitioner(train_dataset)
-    training_sets.partition_data_helper(num_clients=num_of_clients)
-    return training_sets
-
-
 def get_dataset(num_clients, dataset_type, is_test):
     if dataset_type == 'cifar':
         train_transform, test_transform = get_data_transform(dataset_type)
@@ -128,6 +125,20 @@ def get_dataset(num_clients, dataset_type, is_test):
                 transform=test_transform
             )
             return test_dataset
+    elif dataset_type == 'femnist':
+        train_transform, test_transform = get_data_transform(dataset_type)
+        if not is_test:
+            data_map_file = os.path.join('femnist', 'client_data_mapping', 'train.csv')
+            training_dataset = CustomizedData('femnist', 'train.csv', train_transform)
+            training_sets = DataPartitioner(training_dataset)
+            training_sets.partition_data_helper(num_clients=num_clients, data_map_file=data_map_file)
+            return training_sets
+
+        else:
+            test_dataset = CustomizedData('femnist', 'test.csv', test_transform)
+            test_datasets = DataPartitioner(test_dataset)
+            test_datasets.partition_data_helper(num_clients=4)
+            return test_datasets
 
 
 def get_data_transform(data):
@@ -141,6 +152,20 @@ def get_data_transform(data):
         test_transform = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
             transforms.ToTensor(),
+        ])
+    elif data == 'femnist':
+        train_transform = transforms.Compose([
+            transforms.Resize((28, 28)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,))
+        ])
+
+        test_transform = transforms.Compose([
+            transforms.Resize((28, 28)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,))
         ])
 
     return train_transform, test_transform
