@@ -25,9 +25,10 @@ class EdgeServer(job_api_pb2_grpc.JobServiceServicer):
         self.global_model = init_model()
         self.device = torch.device("cuda")
 
-        test_dataset = get_dataset(0, 'femnist', True)
+        test_dataset = get_dataset(0, 'cifar', True)
         self.test_loader = select_dataset(1, test_dataset, batch_sz, 0)
         self.test_data_size = len(test_dataset.partitions[0])
+        print(self.test_data_size)
 
     def Connect(self, request, context):
         print("------------Round {}------------".format(request.group_id))
@@ -74,6 +75,9 @@ class EdgeServer(job_api_pb2_grpc.JobServiceServicer):
         response = job_api_pb2.TrainResponse()
         response.round = 1
         return response
+
+    def submit_transaction(self):
+        pass
 
     def run(self):
         MAX_MESSAGE_LENGTH = 90000000

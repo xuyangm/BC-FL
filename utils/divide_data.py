@@ -124,7 +124,9 @@ def get_dataset(num_clients, dataset_type, is_test):
                 download=True,
                 transform=test_transform
             )
-            return test_dataset
+            test_sets = DataPartitioner(test_dataset)
+            test_sets.partition_data_helper(num_clients=1)
+            return test_sets
     elif dataset_type == 'femnist':
         train_transform, test_transform = get_data_transform(dataset_type)
         if not is_test:
@@ -137,7 +139,7 @@ def get_dataset(num_clients, dataset_type, is_test):
         else:
             test_dataset = CustomizedData('femnist', 'test.csv', test_transform)
             test_datasets = DataPartitioner(test_dataset)
-            test_datasets.partition_data_helper(num_clients=4)
+            test_datasets.partition_data_helper(num_clients=1)  # the test data size is 1/20 now
             return test_datasets
 
 

@@ -1,3 +1,5 @@
+from itertools import combinations
+
 import job_api_pb2_grpc
 import job_api_pb2
 import grpc
@@ -8,6 +10,8 @@ from utils.divide_data import *
 from selector import Selector
 import time
 import gc
+
+from utils.model_creator import average_model, test, cal_shapley_values
 
 
 class Group(object):
@@ -29,10 +33,11 @@ class Group(object):
         self.momentum = momentum
         self.weight_decay = weight_decay
         self.local_steps = local_steps
+        self.accuracy = 0.0
 
-        # test_dataset = get_dataset(0, 'cifar', True)
-        # self.test_loader = DataLoader(dataset=test_dataset, batch_size=batch_sz)
-        # self.test_data_size = len(test_dataset)
+        test_dataset = get_dataset(0, 'cifar', True)
+        self.test_loader = select_dataset(1, test_dataset, batch_sz, 0)
+        self.test_data_size = len(test_dataset.partitions[0])
 
     def connect(self, addr):
         # connect to a server
@@ -53,6 +58,8 @@ class Group(object):
             self.local_models.append(copy.deepcopy(self.global_model))
 
     def train(self):
+        # test
+        self.accuracy = test(self.global_model, self.test_loader, self.test_data_size)
         # train
         for idx, client in enumerate(self.client_ids):
             print("The {}-th client is training. Client ID: {}.".format(idx+1, client))
@@ -84,20 +91,8 @@ class Group(object):
             torch.cuda.empty_cache()
 
         # average models
-        scale = 1.0/len(self.local_models)
-        global_state = self.local_models[0].state_dict()
-
-        for var in global_state:
-            global_state[var] = global_state[var]*scale
-
-        for i in range(1, len(self.local_models)):
-            local_state = self.local_models[i].state_dict()
-            for var in global_state:
-                global_state[var] = global_state[var] + local_state[var]*scale
-
-        self.global_model.load_state_dict(global_state)
-        # self.test()
-        self.global_model = self.global_model.cpu()
+        index = [_ for _ in range(len(self.local_models))]
+        self.global_model = average_model(self.local_models, index)
 
         # create request
         request = job_api_pb2.TrainRequest()
@@ -107,40 +102,27 @@ class Group(object):
     def close(self):
         self.channel.close()
 
-    def test(self):
-        # test
-        self.global_model = self.global_model.to(device=self.device)
-
-        total_loss = 0
-        total_accuracy = 0
-        criterion = torch.nn.CrossEntropyLoss().to(device=self.device)
-
-        self.global_model.eval()
-        test_step = 0
-        with torch.no_grad():
-            for (X, y) in self.test_loader:
-                X = X.to(device=self.device)
-                y = y.to(device=self.device)
-                output = self.global_model(X)
-                total_accuracy += (output.argmax(1) == y).sum()
-                loss = criterion(output, y)
-                total_loss += loss.item()
-                test_step += 1
-
-        print("total loss: {}".format(total_loss))
-        print("total accuracy: {}%".format(total_accuracy / self.test_data_size * 100))
+    def get_shapley_values(self):
+        shapely_values = {}
+        for idx, client_id in enumerate(self.client_ids):
+            shapely_values[client_id] = cal_shapley_values(idx,
+                                                           self.local_models,
+                                                           self.test_loader,
+                                                           self.test_data_size,
+                                                           self.accuracy)
+        return shapely_values
 
 
 def run():
     batch_sz = 50
-    candidates = [_ for _ in range(1, 2801)]
+    candidates = [_ for _ in range(1, 101)]
     rounds = 100
     selector = Selector(candidates)
-    train_dataset = get_dataset(len(candidates), 'femnist', False)
+    train_dataset = get_dataset(len(candidates), 'cifar', False)
     for r in range(rounds):
         t = time.time()
         # select participants
-        participants = selector.select_participants(sample_size=100)
+        participants = selector.select_participants(sample_size=4, method='Bandit')
 
         # prepare dataloader
         train_loaders = []
@@ -149,9 +131,10 @@ def run():
 
         server_addr = 'localhost:12345'
 
-        group = Group(r+1, participants, train_loaders, lr=4e-2, local_steps=20)
+        group = Group(r+1, participants, train_loaders)
         group.connect(server_addr)
         group.train()
+        selector.update_contribution(group.get_shapley_values())
         group.close()
 
         # release memory when a round ends
