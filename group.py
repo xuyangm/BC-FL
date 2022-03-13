@@ -1,3 +1,4 @@
+import random
 from itertools import combinations
 
 import job_api_pb2_grpc
@@ -36,8 +37,16 @@ class Group(object):
         self.accuracy = 0.0
 
         test_dataset = get_dataset(0, 'cifar', True)
-        self.test_loader = select_dataset(1, test_dataset, batch_sz, 0)
+        self.test_loader = select_dataset(1, test_dataset, batch_sz, 0, is_test=True)
         self.test_data_size = len(test_dataset.partitions[0])
+        self.set_env()
+
+    def set_env(self, seed=1):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
 
     def connect(self, addr):
         # connect to a server
@@ -104,21 +113,19 @@ class Group(object):
 
     def get_shapley_values(self):
         shapely_values = {}
+        value_list = cal_shapley_values(self.local_models, self.test_loader, self.test_data_size, self.accuracy)
         for idx, client_id in enumerate(self.client_ids):
-            shapely_values[client_id] = cal_shapley_values(idx,
-                                                           self.local_models,
-                                                           self.test_loader,
-                                                           self.test_data_size,
-                                                           self.accuracy)
+            shapely_values[client_id] = value_list[idx]
         return shapely_values
 
 
 def run():
     batch_sz = 50
     candidates = [_ for _ in range(1, 101)]
-    rounds = 100
+    rounds = 50
     selector = Selector(candidates)
-    train_dataset = get_dataset(len(candidates), 'cifar', False)
+    train_dataset = get_dataset(len(candidates), 'cifar', False, method='dirichlet', alpha=0.5)
+
     for r in range(rounds):
         t = time.time()
         # select participants

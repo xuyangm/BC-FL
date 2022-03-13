@@ -10,6 +10,9 @@ def init_model():
 
 
 def average_model(model_list, index):
+    if len(index) == 1:
+        return model_list[index[0]]
+
     scale = 1.0 / len(index)
     global_state = model_list[index[0]].state_dict()
 
@@ -48,27 +51,34 @@ def test(model, test_loader, test_data_size):
     model = model.to('cpu')
     torch.cuda.empty_cache()
 
-    return total_accuracy / test_data_size
+    return total_accuracy.item() / test_data_size
 
 
-def cal_shapley_values(idx, model_list, test_loader, test_data_size, accuracy):
+def cal_shapley_values(model_list, test_loader, test_data_size, accuracy):
+    value_list = []
+    accuracy_dict = {}
     l = [_ for _ in range(len(model_list))]
-    l.remove(idx)
-    num = len(model_list)
-    counter = 1
-    value = test(model_list[idx], test_loader, test_data_size) - accuracy
 
-    for i in range(1, num):
-        partner_list = list(combinations(l, i))
-        for partners in partner_list:
-            base_model = average_model(model_list, partners)
-            base_acc = test(base_model, test_loader, test_data_size)
-            full_tup = partners + (idx,)
-            full_model = average_model(model_list, full_tup)
-            full_acc = test(full_model, test_loader, test_data_size)
-            value = value + full_acc - base_acc
-            counter += 1
+    for i in range(len(model_list)):
+        cmbs = list(combinations(l, i+1))
+        for cmb in cmbs:
+            model = average_model(model_list, cmb)
+            accuracy_dict[cmb] = test(model, test_loader, test_data_size)
 
-    return float(value / counter)
+    for i in range(len(model_list)):
+        nl = [x for x in l if x != i]
+        counter = 1
+        value = accuracy_dict[(i,)] - accuracy
+
+        for j in range(1, len(model_list)):
+            partner_list = combinations(nl, j)
+            for partners in partner_list:
+                full_tup = tuple(sorted(partners + (i,)))
+                value = value + accuracy_dict[full_tup] - accuracy_dict[partners]
+                counter += 1
+
+        value_list.append(float(value / counter))
+
+    return value_list
 
 

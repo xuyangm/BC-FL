@@ -1,4 +1,7 @@
+import random
+
 import grpc
+import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import gc
@@ -26,9 +29,16 @@ class EdgeServer(job_api_pb2_grpc.JobServiceServicer):
         self.device = torch.device("cuda")
 
         test_dataset = get_dataset(0, 'cifar', True)
-        self.test_loader = select_dataset(1, test_dataset, batch_sz, 0)
+        self.test_loader = select_dataset(1, test_dataset, batch_sz, 0, is_test=True)
         self.test_data_size = len(test_dataset.partitions[0])
-        print(self.test_data_size)
+        self.set_env()
+
+    def set_env(self, seed=1):
+        random.seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
 
     def Connect(self, request, context):
         print("------------Round {}------------".format(request.group_id))
@@ -67,7 +77,7 @@ class EdgeServer(job_api_pb2_grpc.JobServiceServicer):
         print("total loss: {}".format(total_loss))
         print("total accuracy: {}%".format(total_accuracy / self.test_data_size * 100))
 
-        writer = SummaryWriter("./testing_logs")
+        writer = SummaryWriter("test_dir/testing_logs_2")
         writer.add_scalar("total loss", total_loss, self.round)
         writer.add_scalar("total accuracy(%)", total_accuracy/self.test_data_size*100, self.round)
         writer.close()

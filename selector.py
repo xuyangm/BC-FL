@@ -7,7 +7,7 @@ class Selector(object):
     Select participants in each round.
     """
 
-    def __init__(self, candidates):
+    def __init__(self, candidates: list):
         self.explored = OrderedDict()
         self.unexplored = candidates
         self.explore_ratio = 0.9
@@ -24,7 +24,7 @@ class Selector(object):
 
             if explore_num == 0:
                 print("stop exploration now, reset")
-                self.unexplored = self.explored.keys()
+                self.unexplored = list(self.explored.keys())
                 self.explored = OrderedDict()
                 return self.select_participants(sample_size, method)
 
@@ -38,6 +38,7 @@ class Selector(object):
         return participants
 
     def update_contribution(self, shapley_values):
+        print(shapley_values)
         for candidate in shapley_values:
             if candidate in self.unexplored:
                 self.unexplored.remove(candidate)
